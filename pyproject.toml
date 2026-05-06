@@ -1,7 +1,7 @@
 [project]
 name = "dotyo"
-version = "0.2.0"
-description = "The .Yo cypher engine — terminal-native. Host an orchestrator or earn yos as a worker."
+version = "0.2.1"
+description = "The .Yo collaboration network — terminal-native. Open `yo`, talk to Claude, fan out to your team's Claudes."
 readme = "README.md"
 license = { text = "Proprietary" }
 authors = [{ name = "glyphh ai", email = "support@glyphh.ai" }]
