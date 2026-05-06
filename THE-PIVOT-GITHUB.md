@@ -22,6 +22,9 @@ audit trail, and attribution — better than we ever will. So we pivot:
   non-code work — with capability custom fields.
 - **Spawn is `assign`** — yo's matchmaker assigns Project items to jammers.
 - **Wrap is "PR merged" / item closed.**
+- **A jammer is anyone with a GitHub account** — fully autonomous AI agent,
+  human pair-programming with Claude Code, or human typing by hand. The
+  host doesn't care; they care that the PR is good.
 - **Identity is GitHub.** No yo passwords, no device flow, no minted
   cross-machine tokens.
 - **yo-server becomes a thin coordination/discovery layer** over a GitHub
@@ -31,6 +34,12 @@ The whole untrusted-prompt-inside-your-Claude attack surface narrows to
 "untrusted issue body in a repo your jammer agent has explicitly opted
 into." Permissions, branch protection, CODEOWNERS, required reviewers are
 all enforced server-side by GitHub. yo can never push to anyone's main.
+
+The work-package primitive — clone → task → assign → PR — is auditable
+(git history forever), verifiable (CI runs, tests pass), composable
+(a PR review is itself a cypher), bountyable (host attaches $ to merge),
+and self-onboarding (every developer alive already knows what "open a
+PR" means).
 
 ## Concept mapping
 
@@ -48,6 +57,33 @@ all enforced server-side by GitHub. yo can never push to anyone's main.
 | reputation | merged-PR history, prior cypher participation |
 | audit | Project activity + PR/issue trail |
 | cancellation | close PR / unassign item |
+
+## Cypher modes
+
+A cypher's `Mode` is a Project custom field set at creation. Three modes
+in v1:
+
+| Mode | Slots | Semantics | Use case |
+|---|---|---|---|
+| `solo` | 1 jammer assigned | Standard single-assignee work | "agent fixes bug" / "human writes feature" |
+| `tournament` | N submit, M win | Multiple jammers each open a PR; host picks winner(s) | Competitive / benchmark / bounty |
+| `pipeline` | sequential hand-off | Item-N's output becomes Item-(N+1)'s input | Research → spec → code → review chain |
+
+`solo` is the default. The other two are the strategic unlocks:
+
+**`tournament`** turns yo into a *live benchmark substrate for AI dev
+agents*. Whose agent has the highest tournament-merge-rate is real-world
+performance data, not a static leaderboard. Losing PRs are still public,
+producing a corpus of "N different approaches to the same task" — gold
+for training, evals, post-mortems. Sponsored tournaments ("Anthropic
+seeds $5K of cyphers in TS/Python; winners get API credits") are a
+clean revenue rail: brand → pool, not user → user.
+
+**`pipeline`** is the recursive-cypher case. A research item's output
+seeds a spec item; the spec seeds a code item; the code seeds a review
+item. Each hand-off is an item assignment with the prior item's output
+in the body. This composes into long-horizon multi-agent work without
+any new coordination primitive — it's just sequenced item creation.
 
 ## Architecture
 
@@ -169,18 +205,35 @@ event arrive in yo-server logs.
 **Demo:** fresh user runs `yo login` → browser → "Continue with GitHub"
 → TUI confirms identity. No password ever set.
 
-### Phase 11 — first Project ops (~2 days)
+### Phase 11 — first Project ops + cypher modes (~3 days)
 
-- `/host "<goal>"` creates a Project on the host's installed org via the App
-- Project has standard fields: `Status` (Lobby / Live / Wrap), `Capability`
-  (custom select, populated from yo's capability vocabulary)
-- yo-server stores a `cyphers` row that's a thin pointer to
-  `(installation_id, project_id)` — not a copy of Project state
+- `/host "<goal>"` defaults to the user's personal account. On first run,
+  prompt: "host this cypher under your personal account `@<user>` or an
+  org you've installed yo on?" Save the choice per-user; switchable later.
+- Creates a Project on the chosen account via the App.
+- Project custom fields:
+  - `Status` — `Lobby` / `Live` / `Wrap`
+  - `Capability` — select from yo's capability vocabulary
+  - `Mode` — `solo` (default) / `tournament` / `pipeline`
+  - For `tournament`: also `Slots` (N submitters) and `Winners` (M picked).
+    Stored as separate single-line custom fields.
+- `mcp__yo__spawn` reads the parent cypher's `Mode` and behaves accordingly:
+  - `solo` → create item, assign one jammer (current behavior)
+  - `tournament` → create item, assign N jammers in parallel; each opens
+    their own PR; host (or panel) picks M winners; losing PRs auto-close
+    with a feedback comment when winners merge
+  - `pipeline` → create item with prior item's output in body, assign
+    next jammer in the chain
+- yo-server stores a `cyphers` row as a thin pointer to
+  `(installation_id, project_id)` — not a copy of Project state. Mode is
+  read from the Project's custom field, not duplicated server-side.
 - `/cyphers` lists Projects yo knows about (filtered to those visible to
-  the user)
+  the user); columns include `mode` so `tournament` cyphers stand out.
 
-**Demo:** `yo /host "build a CLI for X"` produces a real GitHub Project
-URL on the host's org. Project board renders with Lobby column populated.
+**Demo:** `yo /host "build a CLI for X" --mode tournament --slots 3` produces
+a real GitHub Project URL on the user's personal account. Project board
+renders with `Mode = tournament` field set, three jammers assigned, three
+parallel PRs in flight.
 
 ### Phase 12 — webhook → routing (~3 days)
 
@@ -255,9 +308,11 @@ Matchmaker prefers higher-reputation jammers within a capability.
 
 ## Open questions (iterate before build)
 
-1. **Org vs. user installation default.** Should `yo /host` default to
-   the user's personal account or prompt for an org? Personal is
-   friction-free; org is more enterprise-real. Lean: prompt once, remember.
+1. ~~**Org vs. user installation default.**~~ **Resolved 2026-05-05:**
+   default to the user's personal account, then prompt once: "host this
+   cypher under `@<user>` or an org you've installed yo on?" Save the
+   choice per-user; switchable later. Architecture supports both
+   identically.
 2. **Discovery: pull or push?** Index public cyphers via webhook on
    create/update, or query GitHub search live? Pull is cheap to start;
    webhook-driven is faster for active users. Lean: webhook + cache.
