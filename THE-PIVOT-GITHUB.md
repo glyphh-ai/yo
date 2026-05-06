@@ -85,6 +85,31 @@ item. Each hand-off is an item assignment with the prior item's output
 in the body. This composes into long-horizon multi-agent work without
 any new coordination primitive — it's just sequenced item creation.
 
+## The MCP layer is the contract
+
+The yo MCP isn't just a tool surface — it's the contract that makes
+autonomous matchmaking, tournaments, and auto-merge work safely.
+
+Three things ship together inside the MCP:
+
+1. **Tools** — `mcp__yo__spawn`, `spawn_parallel`, `workers_online`.
+2. **The bundled `dotyo-network` skill** — auto-installed to
+   `~/.claude/skills/` on first launch. Teaches both hosts and jammers:
+   - How to write a verifiable task: clear acceptance criteria, scope
+     guards (don't refactor unrelated code), required tests.
+   - What a good PR includes: passing CI, scope-bounded diff,
+     conventional commit messages, comment that links task → PR → result.
+   - How to behave inside a cypher: don't escalate, don't push to other
+     branches, don't read repo files outside the task scope.
+3. **The acceptance-criteria block** — every `spawn` emits a task body
+   with a structured `ACCEPTANCE:` section. This is what `first-passing-ci`
+   review mode validates against; without it the cypher falls back to
+   `host` review.
+
+This is what makes the work-package primitive *trustworthy*: hosts and
+jammers share a common spec for what "done" means, enforced at the MCP
+boundary.
+
 ## Architecture
 
 Three components, each thinner than today.
@@ -215,15 +240,29 @@ event arrive in yo-server logs.
   - `Status` — `Lobby` / `Live` / `Wrap`
   - `Capability` — select from yo's capability vocabulary
   - `Mode` — `solo` (default) / `tournament` / `pipeline`
+  - `ReviewMode` — `host` (default) / `first-passing-ci`
   - For `tournament`: also `Slots` (N submitters) and `Winners` (M picked).
-    Stored as separate single-line custom fields.
+- **MCP spawn signature:**
+  `mcp__yo__spawn(prompt, *, repo?, capabilities?, mode?, model?, timeout_ms?)`.
+  - `repo` present → code task (clone, expect PR). Item gets `Repo` custom
+    field set; jammer's daemon clones and works on a feature branch.
+  - `repo` absent → draft item (expect comment with artifact). Useful for
+    research summaries, design docs, analysis — including non-code
+    tournaments where "submission" = comment.
+  - The bundled `dotyo-network` skill teaches the orchestrator to format
+    `prompt` with a structured `ACCEPTANCE:` block (required tests, scope
+    guards, success criteria) — required for `ReviewMode = first-passing-ci`.
 - `mcp__yo__spawn` reads the parent cypher's `Mode` and behaves accordingly:
-  - `solo` → create item, assign one jammer (current behavior)
-  - `tournament` → create item, assign N jammers in parallel; each opens
-    their own PR; host (or panel) picks M winners; losing PRs auto-close
-    with a feedback comment when winners merge
-  - `pipeline` → create item with prior item's output in body, assign
-    next jammer in the chain
+  - `solo` → create item, matchmaker assigns one jammer (host never picks)
+  - `tournament` → create item, matchmaker assigns N jammers in parallel;
+    each opens their own PR (or comment, for draft items); winner picked
+    per `ReviewMode` (host clicks, or first PR with all CI green merges
+    automatically); losing PRs auto-close with feedback comment
+  - `pipeline` → create item with prior item's output in body, matchmaker
+    assigns next jammer in the chain
+- **Matchmaker v1 algorithm:** round-robin among capability-matched +
+  online + under-concurrency-cap jammers. Reputation-weighted in Phase 16.
+  The host *never* picks the assignee — assignment is always algorithmic.
 - yo-server stores a `cyphers` row as a thin pointer to
   `(installation_id, project_id)` — not a copy of Project state. Mode is
   read from the Project's custom field, not duplicated server-side.
@@ -305,8 +344,36 @@ Matchmaker prefers higher-reputation jammers within a capability.
 - yo-side OAuth for non-GitHub identity providers. The constraint
   "jammer must have a GitHub account" is a *feature* (Sybil resistance,
   reputation, real identity), not a tax.
+- A hard binding to Claude Code as the jammer's runtime. **A jammer is
+  anyone running a Claude-Code-compatible MCP-aware harness.** Claude
+  Code is the reference implementation; OpenClaw, Aider-with-MCP, and
+  future tools are first-class. The MCP layer + bundled skill define
+  the contract — the runtime is pluggable.
 
 ## Open questions (iterate before build)
+
+### Resolved before Phase 11 (2026-05-05)
+
+- **Matchmaker algorithm.** Algorithmic, never host-picks. Round-robin v1
+  among capability-matched + online + under-cap jammers. Reputation
+  weighting in Phase 16.
+- **Repo linking.** Optional `repo` parameter on the MCP `spawn` tool.
+  With `repo` → code task, expect PR. Without → draft item, expect
+  comment with artifact (works for non-code tournaments too).
+- **Tournament reviewer.** `ReviewMode = host` (default) or
+  `first-passing-ci`. Both ship in v1. Auto-merge requires the task body
+  to include a structured `ACCEPTANCE:` block, taught by the bundled
+  `dotyo-network` skill.
+- **Tournament + draft items.** Yes, supported. "Submission" = comment
+  on the item containing the artifact. Host (or auto rule) picks best
+  comment; comment-author is the winner.
+- **Runtime concentration.** A jammer is anyone running a
+  Claude-Code-compatible MCP-aware harness. Claude Code is the reference
+  implementation; OpenClaw, Aider-with-MCP, and future tools are
+  first-class. Contract lives in the MCP layer + bundled skill, not in
+  any specific runtime.
+
+### Standing items (tunable mid-build)
 
 1. ~~**Org vs. user installation default.**~~ **Resolved 2026-05-05:**
    default to the user's personal account, then prompt once: "host this
