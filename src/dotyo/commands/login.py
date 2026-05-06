@@ -29,8 +29,14 @@ from ..lib.config import clear_auth, load_config, save_config
 
 
 def login_cmd() -> None:
-    """Synchronous entry point for `yo login`."""
-    raise SystemExit(asyncio.run(_async_login()))
+    """Synchronous entry point for `yo login`. On success drops straight
+    into the REPL — no need to re-launch."""
+    code = asyncio.run(_async_login())
+    if code != 0:
+        raise SystemExit(code)
+    # Successful login → hand off to REPL. Don't SystemExit; let the REPL run.
+    from .repl import repl_cmd
+    repl_cmd()  # has its own SystemExit
 
 
 async def _async_login() -> int:
@@ -136,7 +142,6 @@ def _finish_login(console: Console, body: dict[str, Any]) -> int:
             console.print(f"  [{GRAY}]→ {sub_url}[/]")
 
     console.print()
-    console.print(f"[{GRAY}]run [bold]yo[/{GRAY}][{GRAY}] to enter the REPL[/]")
     return 0
 
 
