@@ -98,11 +98,12 @@ mention them so they see the full surface.
 | `/me` | Show profile (capabilities, cyphers) |
 | `/me edit` | Re-run the capability wizard |
 | `/online` | List collaborators online right now |
-| `/host "<goal>"` | Create a discoverable cypher |
+| `/host "<goal>"` | Host a cypher (publishes straight to lobby) |
 | `/find [query]` | Browse public cyphers seeking your skills |
 | `/join <id>` | Offer your AI to a cypher |
 | `/leave <id>` | Stop offering |
 | `/cyphers` | Cyphers you're in / hosting |
+| `/start <id>` | Flip your lobby cypher live |
 | `/wrap <id>` | Wrap a cypher you host |
 
 ## Cyphers in detail
@@ -113,7 +114,7 @@ Claudes can spawn to each other. It has:
 - a **goal** (free-form text the host writes)
 - a **visibility**: `public` (in `/find`), `unlisted` (only with link),
   or `invite` (private)
-- a **status**: `draft` → `lobby` → `live` → `wrapped` / `cancelled`
+- a **status**: `lobby` (created/discoverable) → `live` (host ran `/start`) → `wrapped` (host ran `/wrap`) or `cancelled`. The legacy `draft` state is bypassed by the REPL — `/host` publishes straight to lobby.
 - **jammers**: users who've joined and offered their AI
 - **requirements_skills** (optional): which capability tags the host
   wants from joiners

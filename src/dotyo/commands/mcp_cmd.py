@@ -1,19 +1,19 @@
 """yo mcp — install + serve the yo MCP for use from regular Claude Code.
 
-`yo mcp install` registers the yo MCP server with the user's local
-Claude Code config so `yo.spawn`, `yo.spawn_parallel`, and
-`yo.workers_online` become available tools in any `claude` session
-(not just our orchestrator REPL).
+The REPL auto-registers the MCP with Claude Code on first launch. After
+that, any `claude` session has `mcp__yo__spawn` and friends available —
+CC spawns `yo mcp serve` as a subprocess on demand and talks to it over
+stdin/stdout. Tool handlers proxy to yo-server via REST using the access
+token saved at ~/.dotyo/config.json. Data stays on the user's machine.
 
-`yo mcp serve` runs a stdio MCP server. Claude Code spawns this and
-talks to it over stdin/stdout. Each tool handler proxies through to
-yo-server via REST, using the access token saved at
-~/.dotyo/config.json.
-
-Flow:
-  1. `yo login` — saves your token
-  2. `yo mcp install` — adds an entry to Claude Code's MCP config
-  3. From any `claude` session, the yo tools are available
+Public surface:
+  • `register_yo_mcp(scope)` / `unregister_yo_mcp(scope)` — silent helpers
+    used by the REPL on startup and by the `/mcp` slash commands.
+  • `is_yo_mcp_registered(scope)` — fast check (parses `claude mcp list`).
+  • `mcp_serve_cmd()` — the stdio server CC spawns. Wired as
+    `yo mcp serve` so the registration target is stable.
+  • `mcp_install_cmd` / `mcp_uninstall_cmd` — kept for users who prefer
+    running the install from outside the REPL.
 """
 
 from __future__ import annotations
@@ -31,62 +31,129 @@ from rich.syntax import Syntax
 from ..banner import GRAY, GREEN, WHITE
 
 
+# ── Resolution helpers ─────────────────────────────────────────────────────
+
+def _yo_command() -> list[str]:
+    """The argv that Claude Code should spawn to run `yo mcp serve`.
+
+    Prefers the `yo`/`dotyo` console script on PATH (works when installed
+    via pipx/uv/pip). Falls back to `python -m dotyo` for source checkouts.
+    """
+    yo_path = shutil.which("yo") or shutil.which("dotyo")
+    if yo_path:
+        return [yo_path]
+    return [sys.executable, "-m", "dotyo"]
+
+
+def _claude_path() -> str | None:
+    return shutil.which("claude")
+
+
+# ── Status / install / uninstall (silent helpers) ──────────────────────────
+
+def is_yo_mcp_registered(scope: str = "user") -> bool:
+    """True iff Claude Code already has a `yo` MCP entry at this scope.
+
+    We parse `claude mcp list`. Format varies by CC version, so we just
+    look for the literal name `yo:` at the start of a line.
+    """
+    claude = _claude_path()
+    if not claude:
+        return False
+    try:
+        result = subprocess.run(
+            [claude, "mcp", "list"],
+            capture_output=True, text=True, timeout=8,
+        )
+    except Exception:
+        return False
+    if result.returncode != 0:
+        return False
+    for line in (result.stdout or "").splitlines():
+        s = line.strip()
+        # Common formats: "yo: <command>", "yo (user)", "  yo  …"
+        if s.startswith("yo:") or s.startswith("yo ") or s == "yo":
+            return True
+    return False
+
+
+def register_yo_mcp(scope: str = "user") -> tuple[bool, str]:
+    """Run `claude mcp add yo …`. Returns (ok, message)."""
+    claude = _claude_path()
+    if not claude:
+        return False, "claude CLI not found on PATH"
+    cmd = [
+        claude, "mcp", "add", "yo",
+        "--scope", scope,
+        "--", *_yo_command(), "mcp", "serve",
+    ]
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+    except subprocess.TimeoutExpired:
+        return False, "`claude mcp add` timed out"
+    except Exception as e:
+        return False, f"`claude mcp add` errored: {e}"
+    if result.returncode == 0:
+        return True, "registered"
+    err = (result.stderr or result.stdout or "").strip()
+    return False, f"claude mcp add returned {result.returncode}: {err[:200]}"
+
+
+def unregister_yo_mcp(scope: str = "user") -> tuple[bool, str]:
+    claude = _claude_path()
+    if not claude:
+        return False, "claude CLI not found on PATH"
+    try:
+        result = subprocess.run(
+            [claude, "mcp", "remove", "yo", "--scope", scope],
+            capture_output=True, text=True, timeout=10,
+        )
+    except Exception as e:
+        return False, f"`claude mcp remove` errored: {e}"
+    if result.returncode == 0:
+        return True, "removed"
+    err = (result.stderr or result.stdout or "").strip()
+    return False, f"claude mcp remove returned {result.returncode}: {err[:200]}"
+
+
+# ── CLI subcommand entry points ────────────────────────────────────────────
+
 def mcp_install_cmd(scope: str = "user") -> None:
-    """Register the yo MCP with Claude Code.
-    scope: 'user' (global) | 'project' (cwd's .mcp.json) | 'local'."""
     console = Console()
 
-    yo_path = shutil.which("yo") or shutil.which("dotyo")
-    if not yo_path:
-        yo_path = f"{sys.executable} -m dotyo"
-
-    claude_path = shutil.which("claude")
-    if not claude_path:
+    if not _claude_path():
         console.print(f"[red]✗ claude CLI not found on PATH[/]")
         console.print(f"[{GRAY}]install Claude Code first, then run [bold]claude /login[/{GRAY}][{GRAY}] and try again[/]")
         raise SystemExit(1)
 
-    cmd = [
-        claude_path, "mcp", "add", "yo",
-        "--scope", scope,
-        "--", *yo_path.split(), "mcp", "serve",
-    ]
-    console.print(f"[{GRAY}]→ {' '.join(cmd)}[/]")
-    try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
-        if result.returncode == 0:
-            console.print()
-            console.print(f"[green]✓ yo MCP installed for Claude Code ({scope} scope)[/]")
-            console.print()
-            console.print(Panel(
-                f"From any [bold]claude[/] session you now have:\n"
-                f"  • [bold {GREEN}]mcp__yo__spawn[/](prompt, capabilities?)         dispatch one prompt\n"
-                f"  • [bold {GREEN}]mcp__yo__spawn_parallel[/](prompts)              fan out concurrently\n"
-                f"  • [bold {GREEN}]mcp__yo__workers_online[/]()                     who's connected\n"
-                f"\n"
-                f"[{GRAY}]Try it:[/]\n"
-                f"  [bold]claude[/]\n"
-                f"  [{GRAY}]> spawn 3 collaborators to summarize this README[/]",
-                border_style=GREEN,
-                title=f"[bold {WHITE}]ready[/]",
-            ))
-            return
-        else:
-            console.print(f"[yellow]`claude mcp add` returned {result.returncode}[/]")
-            if result.stderr:
-                console.print(f"[{GRAY}]{result.stderr.strip()}[/]")
-    except subprocess.TimeoutExpired:
-        console.print(f"[yellow]`claude mcp add` timed out[/]")
-    except Exception as e:
-        console.print(f"[yellow]`claude mcp add` errored: {e}[/]")
+    ok, msg = register_yo_mcp(scope)
+    if ok:
+        console.print()
+        console.print(f"[green]✓ yo MCP registered with Claude Code ({scope} scope)[/]")
+        console.print()
+        console.print(Panel(
+            f"From any [bold]claude[/] session you now have:\n"
+            f"  • [bold {GREEN}]mcp__yo__spawn[/](prompt, capabilities?)         dispatch one prompt\n"
+            f"  • [bold {GREEN}]mcp__yo__spawn_parallel[/](prompts)              fan out concurrently\n"
+            f"  • [bold {GREEN}]mcp__yo__workers_online[/]()                     who's connected\n"
+            f"\n"
+            f"[{GRAY}]Try it:[/]\n"
+            f"  [bold]claude[/]\n"
+            f"  [{GRAY}]> spawn 3 collaborators to summarize this README[/]",
+            border_style=GREEN,
+            title=f"[bold {WHITE}]ready[/]",
+        ))
+        return
 
+    console.print(f"[yellow]{msg}[/]")
     console.print()
     console.print(f"[{GRAY}]falling back to manual config — paste this into your CC mcp config:[/]")
     console.print()
+    argv = _yo_command()
     snippet = {
         "yo": {
-            "command": yo_path.split()[0],
-            "args": yo_path.split()[1:] + ["mcp", "serve"],
+            "command": argv[0],
+            "args": argv[1:] + ["mcp", "serve"],
         }
     }
     console.print(Syntax(json.dumps(snippet, indent=2), "json", theme="ansi_dark", line_numbers=False))
@@ -94,24 +161,17 @@ def mcp_install_cmd(scope: str = "user") -> None:
 
 def mcp_uninstall_cmd(scope: str = "user") -> None:
     console = Console()
-    claude_path = shutil.which("claude")
-    if not claude_path:
+    if not _claude_path():
         console.print(f"[red]✗ claude CLI not found on PATH[/]")
         raise SystemExit(1)
-    try:
-        result = subprocess.run(
-            [claude_path, "mcp", "remove", "yo", "--scope", scope],
-            capture_output=True, text=True, timeout=10,
-        )
-        if result.returncode == 0:
-            console.print(f"[green]✓[/] yo MCP removed from Claude Code ({scope} scope)")
-        else:
-            console.print(f"[yellow]`claude mcp remove` returned {result.returncode}[/]")
-            if result.stderr:
-                console.print(f"[{GRAY}]{result.stderr.strip()}[/]")
-    except Exception as e:
-        console.print(f"[red]✗ uninstall failed[/] — {e}")
+    ok, msg = unregister_yo_mcp(scope)
+    if ok:
+        console.print(f"[green]✓[/] yo MCP removed from Claude Code ({scope} scope)")
+    else:
+        console.print(f"[yellow]{msg}[/]")
 
+
+# ── Stdio server (Claude Code spawns this) ─────────────────────────────────
 
 def mcp_serve_cmd() -> None:
     """Stdio MCP server. Claude Code spawns this and talks via stdin/stdout."""
@@ -261,7 +321,7 @@ async def _async_serve() -> None:
             writer,
             InitializationOptions(
                 server_name="yo",
-                server_version="0.2.2",
+                server_version="0.2.4",
                 capabilities=server.get_capabilities(
                     notification_options=NotificationOptions(),
                     experimental_capabilities={},

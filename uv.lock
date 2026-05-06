@@ -215,7 +215,7 @@ wheels = [
 
 [[package]]
 name = "dotyo"
-version = "0.2.2"
+version = "0.2.4"
 source = { editable = "." }
 dependencies = [
     { name = "claude-agent-sdk" },

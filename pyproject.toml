@@ -1,6 +1,6 @@
 [project]
 name = "dotyo"
-version = "0.2.3"
+version = "0.2.4"
 description = "The .Yo collaboration network — terminal-native. Open `yo`, talk to Claude, fan out to your team's Claudes."
 readme = "README.md"
 license = { text = "Proprietary" }
