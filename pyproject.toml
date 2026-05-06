@@ -1,6 +1,6 @@
 [project]
 name = "dotyo"
-version = "0.2.1"
+version = "0.2.2"
 description = "The .Yo collaboration network — terminal-native. Open `yo`, talk to Claude, fan out to your team's Claudes."
 readme = "README.md"
 license = { text = "Proprietary" }
@@ -47,6 +47,9 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/dotyo"]
+# Hatchling's default file-include for packages already covers .md/.txt
+# under the package tree, so SKILL.md ships automatically. No
+# force-include needed (it would create duplicate zip entries).
 
 [tool.hatch.build.targets.sdist]
 include = ["src/", "README.md", "LICENSE", "TESTING.md", "THE-PLAN.md"]

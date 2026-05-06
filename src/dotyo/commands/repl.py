@@ -33,6 +33,31 @@ import sys
 from pathlib import Path
 from typing import Any
 
+# `readline` enables arrow-key history + line editing in `input()`.
+# Imported for its side effects. Not available on Windows by default
+# (use pyreadline3 there); silently skip if missing.
+try:
+    import atexit
+    import readline  # type: ignore
+
+    _HISTORY_FILE = Path.home() / ".dotyo" / "repl_history"
+    _HISTORY_FILE.parent.mkdir(parents=True, exist_ok=True)
+    if _HISTORY_FILE.is_file():
+        try:
+            readline.read_history_file(str(_HISTORY_FILE))
+        except (OSError, PermissionError):
+            pass
+    readline.set_history_length(1000)
+    atexit.register(lambda: _safe_save_history())
+
+    def _safe_save_history() -> None:
+        try:
+            readline.write_history_file(str(_HISTORY_FILE))
+        except Exception:
+            pass
+except ImportError:
+    pass
+
 from rich.console import Console
 from rich.live import Live
 from rich.markdown import Markdown
@@ -45,6 +70,7 @@ from ..banner import GRAY, GRAY_FAINT, GREEN, MAGENTA, PURPLE, WHITE, print_bann
 from ..lib.api import ApiError, get, post, put
 from ..lib.cc_creds import find_cc_credentials
 from ..lib.config import load_config, save_config
+from ..lib.skill_install import install_skill
 from ..network import yo_mcp_allowed_tools, yo_mcp_config, _worker_listener
 
 
@@ -219,6 +245,11 @@ class ReplState:
 async def _async_repl() -> int:
     console = Console()
     print_banner()
+
+    # Install the dotyo-network skill into ~/.claude/skills/ so the
+    # orchestrator's CC has authoritative product knowledge available.
+    # Idempotent — writes only when missing or content-changed.
+    install_skill()
 
     setup = await _ensure_authed_and_set_up(console)
     if setup is None:
