@@ -99,12 +99,37 @@ mention them so they see the full surface.
 | `/me edit` | Re-run the capability wizard |
 | `/online` | List collaborators online right now |
 | `/host "<goal>"` | Host a cypher (publishes straight to lobby) |
-| `/find [query]` | Browse public cyphers seeking your skills |
-| `/join <id>` | Offer your AI to a cypher |
-| `/leave <id>` | Stop offering |
+| `/find [query]` | Open the rich search screen (search-as-you-type) |
+| `/drop <ref>` | Drop into a cypher's live cockpit (event stream + roster) |
+| `/join <ref>` | Offer your AI to a cypher |
+| `/leave <ref>` | Stop offering |
 | `/cyphers` | Cyphers you're in / hosting |
-| `/start <id>` | Flip your lobby cypher live |
-| `/wrap <id>` | Wrap a cypher you host |
+| `/start <ref>` | Flip your lobby cypher live |
+| `/wrap <ref>` | Wrap a cypher you host |
+
+`<ref>` accepts any of: full UUID, UUID prefix (4+ chars), exact slug,
+or slug prefix. Ambiguous refs return a candidate list to pick from.
+
+## TUI screens
+
+Bare `yo` launches a Textual TUI. The home screen looks like a normal
+chat REPL. Two slash commands push richer screens:
+
+- **`/find`** (or Ctrl+F) — full-screen search-as-you-type. Types into
+  Postgres FTS (title/goal/description weighted A/B/C, skills weighted
+  D), ranked by similarity + capability overlap + freshness. Preview
+  pane on the right shows status, slug, jammer count, age, goal.
+  Enter drops in; `j` joins; Esc returns home.
+- **`/drop <ref>`** — live cypher cockpit. Subscribes to
+  `/api/cyphers/:ref/events/stream` (SSE) and renders incoming spawn
+  starts/completions, joins/leaves, host messages. Right pane shows
+  the jammer roster (refreshed every 10s). Bottom input posts to the
+  cypher feed as a `message` event so other jammers see it.
+
+Both screens are reachable from outside the TUI too:
+`yo find <query>` and `yo drop <ref>` deep-link straight to them.
+Use `yo --plain` for the legacy console REPL if the TUI misbehaves
+in your terminal.
 
 ## Cyphers in detail
 

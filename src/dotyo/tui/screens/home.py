@@ -30,7 +30,7 @@ from ...commands.mcp_cmd import (
     register_yo_mcp,
     unregister_yo_mcp,
 )
-from ..widgets.banner import Banner
+from ...banner import render_banner
 from ..widgets.chat_log import ChatLog
 from ..widgets.status_bar import StatusBar
 
@@ -96,7 +96,7 @@ class HomeScreen(Screen):
         self.input.focus()
 
         # Print banner + welcome lines once.
-        self.chat.write(Banner())
+        self.chat.write(render_banner())
         user = self.app.user or {}
         skills = ", ".join(self.app.capabilities.get("skills") or []) or "—"
         self.chat.write_dim(

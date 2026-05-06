@@ -26,7 +26,6 @@ from rich.text import Text
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
-from textual.reactive import reactive
 from textual.screen import Screen
 from textual.widgets import Input, Label, ListItem, ListView, Static
 
@@ -159,8 +158,6 @@ class FindScreen(Screen):
     }
     """
 
-    query: reactive[str] = reactive("", recompose=False)
-
     def __init__(self, initial_query: str = "") -> None:
         super().__init__()
         self._initial_query = initial_query
@@ -236,7 +233,12 @@ class FindScreen(Screen):
         self._refresh_list()
 
     def _refresh_list(self) -> None:
-        lv = self.query_one("#results_list", ListView)
+        # Guarded — Input.Changed can fire during mount before children are ready.
+        from textual.css.query import NoMatches
+        try:
+            lv = self.query_one("#results_list", ListView)
+        except NoMatches:
+            return
         lv.clear()
         for c in self._results:
             lv.append(CypherListItem(c))
@@ -246,15 +248,26 @@ class FindScreen(Screen):
         else:
             self._update_preview(None)
 
+    def _safe_query_one(self, selector: str, expect_type=None):
+        from textual.css.query import NoMatches
+        try:
+            if expect_type is None:
+                return self.query_one(selector)
+            return self.query_one(selector, expect_type)
+        except NoMatches:
+            return None
+
     def on_list_view_highlighted(self, event: ListView.Highlighted) -> None:
         item = event.item
         if isinstance(item, CypherListItem):
             self._update_preview(item.cypher)
 
     def _update_preview(self, c: dict[str, Any] | None) -> None:
-        title_w = self.query_one("#preview_title", Label)
-        meta_w = self.query_one("#preview_meta", Label)
-        goal_w = self.query_one("#preview_goal", Static)
+        title_w = self._safe_query_one("#preview_title", Label)
+        meta_w = self._safe_query_one("#preview_meta", Label)
+        goal_w = self._safe_query_one("#preview_goal", Static)
+        if not (title_w and meta_w and goal_w):
+            return
         if not c:
             title_w.update("")
             meta_w.update(Text("no results — try a different query, or /host one", style=GRAY_FAINT))
