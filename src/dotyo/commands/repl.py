@@ -550,55 +550,75 @@ async def _stream_response(client: Any, console: Console) -> None:
     )
 
     text_buf: list[str] = []
+    # Braille-spinner status line. Stays on while we wait for the first
+    # text/tool block; stops the moment the orchestrator says anything.
+    status = console.status(f"[{GREEN}].Yo[/] [{GRAY}]thinking…[/]", spinner="dots", spinner_style=GREEN)
+    status.start()
+    spinner_active = True
+
+    def _stop_spinner() -> None:
+        nonlocal spinner_active
+        if spinner_active:
+            try:
+                status.stop()
+            except Exception:
+                pass
+            spinner_active = False
 
     def _flush() -> None:
         if text_buf:
+            _stop_spinner()
             console.print(Markdown("".join(text_buf).strip()))
             text_buf.clear()
 
-    async for msg in client.receive_response():
-        if isinstance(msg, SystemMessage):
-            continue
-        if isinstance(msg, AssistantMessage):
-            for block in (msg.content or []):
-                if isinstance(block, TextBlock):
-                    text_buf.append(block.text)
-                elif isinstance(block, ThinkingBlock):
-                    pass
-                elif isinstance(block, ToolUseBlock):
-                    _flush()
-                    name = getattr(block, "name", "tool")
-                    inp = getattr(block, "input", {})
-                    label = f"🛠  {name}"
-                    if isinstance(inp, dict):
-                        if name.endswith("__spawn") and "prompt" in inp:
-                            p = str(inp["prompt"])[:60]
-                            label += f"  [dim]→ {p}{'…' if len(str(inp['prompt'])) > 60 else ''}[/]"
-                        elif name.endswith("__spawn_parallel") and "prompts" in inp:
-                            try:
-                                import json as _j
-                                ps = _j.loads(inp["prompts"]) if isinstance(inp["prompts"], str) else inp["prompts"]
-                                label += f"  [dim]→ ×{len(ps)}[/]"
-                            except Exception:
-                                pass
-                    console.print(f"  [{MAGENTA}]{label}[/]")
-                elif isinstance(block, ToolResultBlock):
-                    _flush()
-        elif isinstance(msg, UserMessage):
-            pass
-        elif isinstance(msg, ResultMessage):
-            _flush()
-            in_t = 0
-            out_t = 0
-            try:
-                if isinstance(msg.usage, dict):
-                    in_t = int(msg.usage.get("input_tokens", 0) or 0)
-                    out_t = int(msg.usage.get("output_tokens", 0) or 0)
-                else:
-                    in_t = int(getattr(msg.usage, "input_tokens", 0) or 0)
-                    out_t = int(getattr(msg.usage, "output_tokens", 0) or 0)
-            except Exception:
+    try:
+        async for msg in client.receive_response():
+            if isinstance(msg, SystemMessage):
+                continue
+            if isinstance(msg, AssistantMessage):
+                for block in (msg.content or []):
+                    if isinstance(block, TextBlock):
+                        text_buf.append(block.text)
+                    elif isinstance(block, ThinkingBlock):
+                        pass
+                    elif isinstance(block, ToolUseBlock):
+                        _flush()
+                        _stop_spinner()
+                        name = getattr(block, "name", "tool")
+                        inp = getattr(block, "input", {})
+                        label = f"🛠  [{GREEN}]{name}[/]"
+                        if isinstance(inp, dict):
+                            if name.endswith("__spawn") and "prompt" in inp:
+                                p = str(inp["prompt"])[:60]
+                                label += f"  [{GRAY}]→ {p}{'…' if len(str(inp['prompt'])) > 60 else ''}[/]"
+                            elif name.endswith("__spawn_parallel") and "prompts" in inp:
+                                try:
+                                    import json as _j
+                                    ps = _j.loads(inp["prompts"]) if isinstance(inp["prompts"], str) else inp["prompts"]
+                                    label += f"  [{GRAY}]→ ×{len(ps)}[/]"
+                                except Exception:
+                                    pass
+                        console.print(f"  {label}")
+                    elif isinstance(block, ToolResultBlock):
+                        _flush()
+            elif isinstance(msg, UserMessage):
                 pass
-            console.print(f"  [{GRAY_FAINT}]turn complete  ·  {in_t}+{out_t} tok[/]")
-            return
-    _flush()
+            elif isinstance(msg, ResultMessage):
+                _flush()
+                _stop_spinner()
+                in_t = 0
+                out_t = 0
+                try:
+                    if isinstance(msg.usage, dict):
+                        in_t = int(msg.usage.get("input_tokens", 0) or 0)
+                        out_t = int(msg.usage.get("output_tokens", 0) or 0)
+                    else:
+                        in_t = int(getattr(msg.usage, "input_tokens", 0) or 0)
+                        out_t = int(getattr(msg.usage, "output_tokens", 0) or 0)
+                except Exception:
+                    pass
+                console.print(f"  [{GRAY_FAINT}]· {in_t}+{out_t} tok[/]")
+                return
+        _flush()
+    finally:
+        _stop_spinner()

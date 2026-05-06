@@ -64,18 +64,29 @@ def _left_row(parts: list[tuple[str, str | None]], left_pad: int = 0) -> Text:
     return text
 
 
-def render_banner(version: str = "0.1.0") -> Group:
+def _resolve_version(explicit: str | None) -> str:
+    if explicit:
+        return explicit
+    try:
+        from . import __version__  # type: ignore
+        return __version__
+    except Exception:
+        return ""
+
+
+def render_banner(version: str | None = None) -> Group:
     indent = _logo_indent()
+    v = _resolve_version(version)
 
     body: list[Text] = []
     for line in _LOGO_LINES:
         body.append(_logo_line(line))
     # version directly under the .Yo, indented to match the dot
-    body.append(_left_row([(f"v{version}", GRAY_FAINT)], left_pad=indent))
+    body.append(_left_row([(f"v{v}", GRAY_FAINT)], left_pad=indent))
     return Group(Text(""), *body, Text(""))
 
 
-def print_banner(version: str = "0.1.0", console: Console | None = None) -> None:
+def print_banner(version: str | None = None, console: Console | None = None) -> None:
     c = console or Console()
     c.print(render_banner(version))
 
