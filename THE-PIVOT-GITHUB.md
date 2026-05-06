@@ -373,16 +373,16 @@ Matchmaker prefers higher-reputation jammers within a capability.
   first-class. Contract lives in the MCP layer + bundled skill, not in
   any specific runtime.
 
-### Standing items (tunable mid-build)
+### Resolved before Phase 9
 
 1. ~~**Org vs. user installation default.**~~ **Resolved 2026-05-05:**
    default to the user's personal account, then prompt once: "host this
    cypher under `@<user>` or an org you've installed yo on?" Save the
    choice per-user; switchable later. Architecture supports both
    identically.
-2. **Discovery: pull or push?** Index public cyphers via webhook on
-   create/update, or query GitHub search live? Pull is cheap to start;
-   webhook-driven is faster for active users. Lean: webhook + cache.
+2. ~~**Discovery: pull or push?**~~ **Resolved 2026-05-05:** webhook +
+   cache. Index public cyphers via `project_v2_item` webhooks; fall back
+   to live GH search only if the cache is stale.
 3. ~~**Capability vocabulary fixed or open?**~~ **Resolved 2026-05-05:**
    slugs only. Fixed vocabulary, no free-form tags. Simpler matching,
    simpler UI, simpler skill instructions. Add tags later if a real use
@@ -391,23 +391,23 @@ Matchmaker prefers higher-reputation jammers within a capability.
    2026-05-05:** cache in yo-server, reconcile via webhooks. Periodic
    full-resync to recover from missed deliveries. Required for FTS on
    `/find` and sub-100ms cockpit hydration; standard SaaS pattern.
-5. **What about non-code jammers running yo without ever using
-   Claude Code?** Possible, but every jammer currently bundles CC. For
-   "research-only" personas, we still launch CC with no repo and a draft
-   item as the prompt. Acceptable in v1.
-6. **Migration of existing dev users.** Current users have device-flow
-   JWTs. Plan: GH OAuth becomes the only login path; existing users
-   re-link their account once on next launch via a one-time migration
-   prompt.
+5. ~~**What about non-code jammers running yo without ever using
+   Claude Code?**~~ **Resolved 2026-05-05:** redundant with the runtime
+   concentration resolution above. Runtime is pluggable; CC is the
+   reference; non-code work runs on the same harness with `repo` omitted.
+6. ~~**Migration of existing dev users.**~~ **Resolved 2026-05-05:** N/A
+   — there are no production device-flow users to migrate. GH OAuth is
+   the only login path from day one; the device-flow code can be removed
+   without a transition window.
 7. ~~**Pricing for org installs.**~~ **Resolved 2026-05-05:** per-seat.
    When a GH org installs the yo App, the org is the customer; yo bills
    per active member-user, not a flat installation fee. Mirrors the
    standard B2B GH-App SaaS pattern (Linear, Vercel). Personal subs
    remain a separate path for individual jammers.
-8. **The legacy yo-server cypher-build branch.** That branch added
-   spawn / device-flow / capabilities / artifacts. Most of those endpoints
-   stay (the App is additive — it doesn't replace the rest of the API
-   on day 1). Plan a deprecation timeline once Phase 13 is demoable.
+8. ~~**The legacy yo-server cypher-build branch.**~~ **Resolved
+   2026-05-05:** no deprecation concerns. Remove the legacy SSE worker
+   bus, device-flow auth, and yos wallet code as they become obsolete
+   during the build — no compatibility window required.
 
 ## What changes for `yo-server`
 
@@ -423,12 +423,13 @@ New additions for the pivot:
 - `src/migrations/03X_github_app.sql` — `installations` table, `gh_user_id`
   on users, `cyphers.project_id` + `cyphers.installation_id`
 
-What gets *deprecated* (not deleted in v1):
+What gets *deleted* (no compatibility window — there are no production
+users to break):
 
-- Device-flow auth routes — kept until all dev users have re-linked
-- In-memory worker bus — kept until all production cyphers route through
-  GH webhooks
-- Yos balance / ledger — already deprecated in cypher-build; finish removal
+- Device-flow auth routes
+- In-memory SSE worker bus + `spawn-routes.ts`
+- Yos balance / ledger (already deprecated in `cypher-build`; finish removal)
+- `capabilities-routes.ts` device-flow companion endpoints
 
 ## First step
 
