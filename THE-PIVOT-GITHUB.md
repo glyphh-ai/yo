@@ -1,11 +1,33 @@
 # THE-PIVOT-GITHUB — yo on GitHub Projects
 
-> **Status: planning. Iterating before build.**
+> **Status: building. All open questions resolved 2026-05-05.**
 >
 > Companion to `THE-PLAN.md` (which documents shipped phases 0–8 of the
 > peer-to-peer SSE-bus model). This doc describes the *next* architecture:
-> cyphers as GitHub Projects, work as PRs, identity as GitHub, perimeter
-> as GitHub's perimeter.
+> projects on GitHub, work as PRs, identity as GitHub, perimeter as
+> GitHub's perimeter.
+>
+> **Working procedure:** as each phase task is completed, flip its
+> checkbox here in the same commit. This doc is the persistent task
+> tracker — if a session drops, the next session resumes from the first
+> unchecked box.
+
+---
+
+## Build progress
+
+| Phase | Title | Status |
+|---|---|---|
+| 9  | GitHub App scaffolding | ⬜ not started |
+| 10 | GH OAuth identity | ⬜ not started |
+| 11 | First Project ops + project modes | ⬜ not started |
+| 12 | Webhook → routing | ⬜ not started |
+| 13 | Worker daemon: pick up → PR | ⬜ not started |
+| 14 | TUI cockpit hydration | ⬜ not started |
+| 15 | Discovery + FTS | ⬜ not started |
+| 16 | Reputation + settlement seed | ⬜ not started |
+
+Legend: ⬜ not started · 🟡 in progress · ✅ done
 
 ---
 
@@ -57,6 +79,41 @@ PR" means).
 | reputation | merged-PR history, prior cypher participation |
 | audit | Project activity + PR/issue trail |
 | cancellation | close PR / unassign item |
+
+## Lingo / vocabulary
+
+**Decision (2026-05-05):** canonicalize on GitHub vocabulary in code,
+docs, error messages, APIs, and schemas. Keep `yo` + a few descriptive
+verbs as flavor in the TUI/CLI surface only.
+
+Going forward:
+
+| Drop (legacy slang) | Use (canonical) |
+|---|---|
+| cypher | project |
+| jammer | contributor (or assignee in API context) |
+| spawn (as noun) | task / issue |
+| spawn (as verb) | dispatch / assign |
+| vibes | (concept retired) |
+| `.sup` / `.dip` / `.drip` / `.peace` | `/help` / `/leave` / `/quit` (etc.) |
+| dotyo (the brand) | yo |
+
+Keep:
+
+- **`yo`** — the brand. CLI binary, package name, dotted prefix
+  (`@yo` mentions, `yo:` label namespace).
+- **`drop`** — `yo drop <project>` to enter a project's live cockpit.
+  More descriptive than "open"; earns its slot.
+- **`host`** — natural outside yo too ("project host"); keeps semantic
+  weight.
+- **`wrap`** — closing/finishing a project. Mildly evocative without
+  obscuring meaning.
+- **`skills`** — already standard vocabulary.
+
+**This doc retains some legacy terms** (e.g. "Cypher modes" section
+title) for transitional clarity. New code, schemas, and APIs use the
+canonical column. Internal team chatter can keep whatever flavor; the
+public surface canonicalizes.
 
 ## Cypher modes
 
@@ -202,30 +259,37 @@ Each phase has a concrete demoable outcome. Plan-only until checked off.
 
 ### Phase 9 — GitHub App scaffolding (~2 days)
 
-- Create the `yo-cypher` App under `glyphh-ai` (manifest-defined so it's
-  versioned in the repo)
-- yo-server: `POST /api/github/webhook` — signature verification, ack 200,
-  log payloads to a dev table for replay
-- yo-server: `GET /api/auth/github/install` — kick off install flow
-- yo-server: `GET /api/auth/github/callback` — capture `installation_id`,
-  link to user/org, redirect to TUI sign-in success
-- Manual install on a test org, verify webhook fires, verify `installation_id`
-  captured
+- [ ] Draft `yo-cypher` App manifest YAML, version it in `yo-server/manifests/`
+- [ ] Create the App on github.com under `glyphh-ai` org
+- [ ] Store App ID, private key, webhook secret in yo-server env (and `.env.example`)
+- [ ] Migration `032_github_app.sql`: `installations`, `gh_oauth_states`
+- [ ] yo-server: webhook signature-verification middleware (HMAC SHA-256)
+- [ ] yo-server: `POST /api/github/webhook` — verify, ack 200, log payload
+- [ ] yo-server: `GET /api/auth/github/install` — redirect to App install URL
+- [ ] yo-server: `GET /api/auth/github/callback` — capture `installation_id`, persist
+- [ ] yo-server: GH App JWT signer + installation-token cache service
+- [ ] Manual install on `glyphh-ai/yo-cypher-test`; verify webhook fires
+- [ ] Update Build progress: Phase 9 ✅
 
 **Demo:** install the App on `glyphh-ai/yo-cypher-test`, see the install
 event arrive in yo-server logs.
 
 ### Phase 10 — GH OAuth identity (~2 days)
 
-- yo-server: GH OAuth login flow via the App's user-to-server tokens.
-  Replaces device flow.
-- Migrate `users` table: add `gh_user_id` as the natural key alongside
-  existing `id`. Backfill existing dev users by email match where possible.
-- dotyo: `yo login` opens a browser to the GH OAuth flow, captures
-  redirect, persists the resulting yo session JWT (yo still mints session
-  JWTs for its own API; only the *origin of trust* moves to GH).
-- Org-level installations: when an org installs the App, create an
-  `org` row tied to a yo subscription seat pool.
+- [ ] Migration: add `gh_user_id` (unique) to `users`; create `orgs` table
+      keyed on `gh_org_id` with seat-pool columns
+- [ ] yo-server: `GET /api/auth/github/start` — kick off GH OAuth (state cookie)
+- [ ] yo-server: `GET /api/auth/github/callback/oauth` — exchange code,
+      fetch user profile + orgs, upsert `users` row by `gh_user_id`,
+      mint yo session JWT
+- [ ] yo-server: delete device-flow auth routes + `device-auth-routes.ts`
+- [ ] yo-server: when App installs on an org, upsert `orgs` row + link
+      `installation_id`
+- [ ] yo: rewrite `yo login` to open the browser to OAuth start URL +
+      poll a local loopback for the session JWT
+- [ ] yo: delete legacy device-flow login code + `lib/device_flow.py` (if any)
+- [ ] yo: update `doctor` checks for new auth model
+- [ ] Update Build progress: Phase 10 ✅
 
 **Demo:** fresh user runs `yo login` → browser → "Continue with GitHub"
 → TUI confirms identity. No password ever set.
@@ -271,65 +335,123 @@ event arrive in yo-server logs.
 
 **Demo:** `yo /host "build a CLI for X" --mode tournament --slots 3` produces
 a real GitHub Project URL on the user's personal account. Project board
-renders with `Mode = tournament` field set, three jammers assigned, three
-parallel PRs in flight.
+renders with `Mode = tournament` field set, three contributors assigned,
+three parallel PRs in flight.
+
+**Tasks:**
+
+- [ ] Migration: `projects` table — `id`, `installation_id`, `gh_project_id`,
+      `owner_kind` (user/org), `host_user_id`, `mode`, `review_mode`, `slots`,
+      `winners`, `created_at`
+- [ ] yo-server: `github-project-service.ts` — create Project + standard
+      custom fields (Status / Capability / Mode / ReviewMode / Slots /
+      Winners) idempotently via GraphQL
+- [ ] yo-server: `POST /api/projects` — create a Project via the App on
+      caller's chosen owner (personal default, prompt if multi-org)
+- [ ] yo-server: `GET /api/projects/mine` — projects visible to current user
+- [ ] yo-server: `matchmaker-service.ts` v1 — round-robin among
+      capability-matched + online + under-cap workers
+- [ ] yo: `/host` slash command rewrite — POST to `/api/projects`, render
+      result with project URL + slug
+- [ ] yo: first-run host-target prompt ("personal vs org") + persistence
+- [ ] yo: MCP `spawn` tool signature update — add `repo?`, `mode?` params
+- [ ] yo: bundled `dotyo-network` skill — add ACCEPTANCE-block instructions
+      + scope-guard guidance + PR-quality requirements
+- [ ] yo: `spawn` body composer — formats prompt with `ACCEPTANCE:`,
+      `SCOPE:`, `OUT_OF_SCOPE:` blocks when target mode/review demand it
+- [ ] yo: tournament dispatch (N parallel item creations)
+- [ ] yo: pipeline dispatch (sequential threading with prior-output context)
+- [ ] Update Build progress: Phase 11 ✅
 
 ### Phase 12 — webhook → routing (~3 days)
 
-- Item created on a Project with `Capability = research` and `assignee = null`
-  triggers yo-server's matchmaker
-- Matchmaker picks a jammer (capability ∈ stack, online, under concurrency
-  cap) and uses the App to set `item.assignees`
-- Jammer daemon receives the webhook, surfaces the assignment in the TUI
+- [ ] yo-server: webhook handler for `project_v2_item.created` — read
+      `Capability` field, if `assignee = null` invoke matchmaker
+- [ ] yo-server: webhook handler for `project_v2_item.edited` — capability
+      changes re-trigger matchmaker
+- [ ] yo-server: matchmaker uses App to set `item.assignees` (GraphQL)
+- [ ] yo-server: webhook handler for `issues.assigned` — fan to per-user
+      SSE stream
+- [ ] yo-server: `GET /api/me/assignments/stream` — SSE per authenticated user
+- [ ] yo-server: `online_workers` registry (in-memory, replaces SSE worker
+      bus) — keyed on user, expires after heartbeat timeout
+- [ ] yo-server: heartbeat endpoint for workers
+- [ ] yo: subscribe to assignments SSE on app mount
+- [ ] yo: render incoming assignment in HomeScreen + DropScreen
+- [ ] yo: heartbeat loop while connected
+- [ ] Update Build progress: Phase 12 ✅
 
 **Demo:** host creates an item via `mcp__yo__spawn`, the item appears
-assigned to a matched jammer in <2s. Jammer's TUI shows incoming task.
+assigned to a matched contributor in <2s. Their TUI shows incoming task.
 
-### Phase 13 — jammer daemon: pick up → PR (~3 days)
+### Phase 13 — worker daemon: pick up → PR (~3 days)
 
-- On assignment in a repo-linked item, jammer:
-  - clones the repo (if not present locally)
-  - launches Claude Code with the issue body + repo context
-  - works in a feature branch
-  - opens a PR via the jammer's own GH PAT
-  - posts a comment on the source item linking the PR
-- For draft items (no repo): result posted as item comment
+- [ ] yo: assignment handler — read item body, detect `Repo` field
+- [ ] yo: repo cloner — clone to `~/.dotyo/workspaces/<project>/<item>`
+      if not present; otherwise `git fetch && git checkout main && git pull`
+- [ ] yo: feature branch creator — `yo/<project-slug>/<item-id>`
+- [ ] yo: launch Claude Code subprocess with item body + ACCEPTANCE
+      block + repo path
+- [ ] yo: capture CC progress, surface in TUI cockpit
+- [ ] yo: detect "no changes" failure mode (CC produced empty diff)
+- [ ] yo: PR opener using the worker's own GH PAT (read from
+      `~/.config/gh/hosts.yml` or env `GITHUB_TOKEN`)
+- [ ] yo: post a comment on the source item linking the PR
+- [ ] yo: draft-item handler — post result as item comment, no PR
+- [ ] yo: heartbeat back to yo-server `task_complete` / `task_failed`
+- [ ] Update Build progress: Phase 13 ✅
 
-**Demo:** end-to-end: host opens cypher → spawns "fix typo in README" →
-matched jammer's daemon picks up → PR appears in the host's repo →
+**Demo:** end-to-end: host opens project → dispatches "fix typo in README"
+→ matched contributor's daemon picks up → PR appears in the host's repo →
 host merges → reputation tick.
 
 ### Phase 14 — TUI cockpit hydration (~2 days)
 
-- `yo drop <ref>` cockpit fetches the live Project board via the App
-- Renders columns (Lobby / Live / Wrap), items, capabilities, assignees
-- Subscribes to `cypher_event_stream` (existing yo-server SSE) for live
-  updates; under the hood that's now a GitHub-webhook fanout
+- [ ] yo-server: `GET /api/projects/:ref/board` — cached + reconciled
+      Project board view (columns, items, custom fields, assignees)
+- [ ] yo-server: project event stream `GET /api/projects/:ref/events/stream`
+      backed by webhooks (replaces `cypher_event_stream`)
+- [ ] yo-server: cache layer — items table, materialized from webhooks +
+      periodic full-resync
+- [ ] yo: `DropScreen` rewrite — fetch board, render columns + items
+- [ ] yo: live update via the new SSE stream
+- [ ] yo: status bar — show project name, mode, item counts per column
+- [ ] Update Build progress: Phase 14 ✅
 
-**Demo:** two terminals on two machines watching the same cypher's
+**Demo:** two terminals on two machines watching the same project's
 cockpit; an action on one reflects on the other in real time.
 
 ### Phase 15 — discovery + FTS (~2 days)
 
-- yo-server indexes opt-in public cyphers (host marks Project
-  `Visibility = public` via custom field)
-- `yo find` queries the index; ranking by match score + recency
-- Search joins on yo-side capability profile to default-filter to a
-  user's stack
+- [ ] yo-server: migration — `projects.tsv` (tsvector) + GIN index +
+      trigger to keep it in sync with `title`/`description`/capability
+- [ ] yo-server: webhook handler — when a project flips
+      `Visibility = public`, index it; when wrapped, deindex
+- [ ] yo-server: `GET /api/projects/discover` — FTS query + capability
+      filter + ranking (match × recency × reputation later)
+- [ ] yo: `FindScreen` — wire to discover endpoint, render results
+- [ ] yo: capability default-filter — pre-fill query with user's stack
+- [ ] Update Build progress: Phase 15 ✅
 
 **Demo:** `yo find "TypeScript SDK help"` returns a ranked list of public
-cyphers needing TS work.
+projects needing TS work.
 
 ### Phase 16 — reputation + settlement seed (~3 days)
 
-- yo-server computes per-user reputation: merged PRs in cyphers, items
-  completed, average time-to-merge, host satisfaction (later)
-- Reputation surfaces in `/online` and `/find` results
-- Settlement is *out of scope for v1* — but instrument the data so we
-  can settle later if desired
+- [ ] yo-server: migration — `user_reputation` table (user_id,
+      merged_prs, items_completed, avg_time_to_merge, last_calc_at)
+- [ ] yo-server: nightly job to recompute reputation from project + PR
+      history (or webhook-incremental)
+- [ ] yo-server: `GET /api/users/:id/reputation` endpoint
+- [ ] yo-server: matchmaker — switch from round-robin to
+      reputation-weighted selection within capability matches
+- [ ] yo: `/online` — show capability + reputation
+- [ ] yo: `/find` — sort by `reputation × match-score`
+- [ ] Update Build progress: Phase 16 ✅
 
-**Demo:** `yo /online` shows each jammer with capability + reputation.
-Matchmaker prefers higher-reputation jammers within a capability.
+**Demo:** `yo /online` shows each contributor with capability +
+reputation. Matchmaker prefers higher-reputation contributors within a
+capability.
 
 ## What we're NOT building in this pivot
 
