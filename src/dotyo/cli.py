@@ -1,6 +1,9 @@
-"""yo CLI — single REPL command + auth/diagnostics + MCP wiring.
+"""yo CLI — TUI front door + auth/diagnostics + MCP wiring.
 
-  yo                    REPL (the front door)
+  yo                    TUI (chat + /find + /drop)
+  yo --plain            legacy console REPL (fallback)
+  yo drop <ref>         open a cypher's cockpit directly
+  yo find [query]       open the cypher search screen directly
   yo login              OAuth device-flow login (browser + poll)
   yo logout             clear creds
   yo doctor             env checks
@@ -35,10 +38,18 @@ app = typer.Typer(
 
 
 @app.callback(invoke_without_command=True)
-def root(ctx: typer.Context) -> None:
-    """Bare `yo` drops into the REPL. Subcommands run normally."""
-    if ctx.invoked_subcommand is None:
+def root(
+    ctx: typer.Context,
+    plain: Annotated[bool, typer.Option("--plain", help="Use the legacy console REPL instead of the TUI.")] = False,
+) -> None:
+    """Bare `yo` drops into the TUI. `--plain` falls back to the legacy console REPL."""
+    if ctx.invoked_subcommand is not None:
+        return
+    if plain:
         repl_cmd()
+        return
+    from .tui import run_tui
+    run_tui()
 
 
 @app.command(name="login", help="Sign in via the browser (OAuth device flow).")
@@ -83,6 +94,23 @@ def mcp_uninstall(
 @mcp_app.command("serve", help="Run the yo MCP as a stdio server (Claude Code spawns this).")
 def mcp_serve() -> None:
     mcp_serve_cmd()
+
+
+@app.command(name="drop", help="Drop into a cypher (TUI cockpit). Accepts UUID, slug, or prefix.")
+def drop(
+    ref: Annotated[str, typer.Argument(help="cypher reference: UUID, slug, or prefix")],
+) -> None:
+    from .tui import run_tui
+    run_tui(deep_link=("drop", ref))
+
+
+@app.command(name="find", help="Open the cypher search TUI. Optional query is pre-filled.")
+def find(
+    query: Annotated[list[str], typer.Argument(help="optional search query")] = None,
+) -> None:
+    from .tui import run_tui
+    parts = ("find", *(query or []))
+    run_tui(deep_link=parts)
 
 
 @app.command(name="version", help="Print version.")

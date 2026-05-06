@@ -287,6 +287,61 @@ async def _worker_listener(
             backoff = min(backoff * 1.6, 30.0)
 
 
+async def cypher_event_stream(
+    cypher_ref: str,
+    on_event: Callable[[dict[str, Any]], None],
+    shutdown: asyncio.Event,
+    *,
+    since: int = 0,
+) -> None:
+    """Subscribe to /api/cyphers/:ref/events/stream and call on_event(...)
+    for each row. Reconnects with backoff on disconnect; carries `since`
+    forward across reconnects via Last-Event-ID.
+
+    on_event receives the raw event row dict (kind, payload, seq, ...).
+    """
+    backoff = 1.0
+    last_seq = since
+    while not shutdown.is_set():
+        cfg = load_config()
+        if not cfg.access_token:
+            await asyncio.sleep(2)
+            continue
+        headers = {
+            "Authorization": f"Bearer {cfg.access_token}",
+            "Last-Event-ID": str(last_seq) if last_seq else "0",
+        }
+        try:
+            async with httpx.AsyncClient(
+                base_url=cfg.server_url.rstrip("/"),
+                headers=headers,
+                timeout=httpx.Timeout(30.0, read=None),
+            ) as client:
+                path = f"/api/cyphers/{cypher_ref}/events/stream"
+                async with aconnect_sse(client, "GET", path, timeout=httpx.Timeout(30.0, read=None)) as event_source:
+                    on_event({"kind": "_stream_connected"})
+                    backoff = 1.0
+                    async for sse in event_source.aiter_sse():
+                        if shutdown.is_set():
+                            break
+                        try:
+                            data = json.loads(sse.data) if sse.data else {}
+                        except json.JSONDecodeError:
+                            continue
+                        if sse.id:
+                            try:
+                                last_seq = max(last_seq, int(sse.id))
+                            except ValueError:
+                                pass
+                        if sse.event == "reconnect":
+                            break  # server hint to reconnect; outer loop does it
+                        on_event({"kind": sse.event or data.get("kind", "event"), "data": data, "seq": last_seq})
+        except Exception as e:
+            on_event({"kind": "_stream_disconnected", "error": type(e).__name__})
+            await asyncio.sleep(backoff)
+            backoff = min(backoff * 1.6, 30.0)
+
+
 async def _handle_incoming(
     client: httpx.AsyncClient,
     request_id: str,

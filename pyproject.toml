@@ -1,6 +1,6 @@
 [project]
 name = "dotyo"
-version = "0.2.4"
+version = "0.3.0"
 description = "The .Yo collaboration network — terminal-native. Open `yo`, talk to Claude, fan out to your team's Claudes."
 readme = "README.md"
 license = { text = "Proprietary" }
@@ -29,6 +29,7 @@ dependencies = [
     "platformdirs>=4.2.0",
     "pydantic>=2.7.0",
     "rich>=13.7.0",
+    "textual>=0.85.0",
     "typer>=0.12.0",
 ]
 
