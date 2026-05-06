@@ -383,14 +383,14 @@ Matchmaker prefers higher-reputation jammers within a capability.
 2. **Discovery: pull or push?** Index public cyphers via webhook on
    create/update, or query GitHub search live? Pull is cheap to start;
    webhook-driven is faster for active users. Lean: webhook + cache.
-3. **Capability vocabulary fixed or open?** Today's stack is 8 fixed
-   slugs (`code` / `research` / `writing` / ...). Free-form tags would
-   let cyphers say "needs Postgres + Rust." Lean: fixed top-level + free
-   tags as secondary signal.
-4. **Item source-of-truth: Project or yo-side?** A cypher's items live
-   on GitHub. Should yo-server cache item state, or always fetch live?
-   Webhook events let us cache safely. Lean: cache + reconcile via
-   webhook.
+3. ~~**Capability vocabulary fixed or open?**~~ **Resolved 2026-05-05:**
+   slugs only. Fixed vocabulary, no free-form tags. Simpler matching,
+   simpler UI, simpler skill instructions. Add tags later if a real use
+   case demands it.
+4. ~~**Item source-of-truth: Project or yo-side?**~~ **Resolved
+   2026-05-05:** cache in yo-server, reconcile via webhooks. Periodic
+   full-resync to recover from missed deliveries. Required for FTS on
+   `/find` and sub-100ms cockpit hydration; standard SaaS pattern.
 5. **What about non-code jammers running yo without ever using
    Claude Code?** Possible, but every jammer currently bundles CC. For
    "research-only" personas, we still launch CC with no repo and a draft
@@ -399,9 +399,11 @@ Matchmaker prefers higher-reputation jammers within a capability.
    JWTs. Plan: GH OAuth becomes the only login path; existing users
    re-link their account once on next launch via a one-time migration
    prompt.
-7. **Pricing for org installs.** Per-seat (every member of the org gets
-   jammer access) or per-installation (org pays a flat fee, all members
-   ride for free)? Lean: per-seat to mirror standard GH App SaaS.
+7. ~~**Pricing for org installs.**~~ **Resolved 2026-05-05:** per-seat.
+   When a GH org installs the yo App, the org is the customer; yo bills
+   per active member-user, not a flat installation fee. Mirrors the
+   standard B2B GH-App SaaS pattern (Linear, Vercel). Personal subs
+   remain a separate path for individual jammers.
 8. **The legacy yo-server cypher-build branch.** That branch added
    spawn / device-flow / capabilities / artifacts. Most of those endpoints
    stay (the App is additive — it doesn't replace the rest of the API
