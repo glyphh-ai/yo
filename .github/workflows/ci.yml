@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    name: Test Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.12', '3.13']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+
+      - name: Set up Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: uv sync --all-extras
+
+      - name: Smoke import all modules
+        run: |
+          uv run python -c "
+          from dotyo.cli import app
+          from dotyo.banner import print_banner, print_mini
+          from dotyo.commands.doctor import doctor_cmd
+          from dotyo.commands.login import login_cmd, logout_cmd
+          from dotyo.commands.repl import repl_cmd, _async_repl
+          from dotyo.network import yo_mcp_config, yo_mcp_allowed_tools
+          from dotyo.lib.config import load_config
+          from dotyo.lib.api import get, post, put
+          assert callable(yo_mcp_config)
+          print('all imports ok')
+          "
+
+      - name: CLI surface check
+        run: |
+          uv run yo --help
+          uv run yo version
+          uv run yo doctor || true
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+
+      - name: Install dependencies
+        run: uv sync --all-extras
+
+      - name: Run ruff
+        run: uv run ruff check src/
+        continue-on-error: true
+
+      - name: Run mypy
+        run: uv run mypy src/dotyo/ --ignore-missing-imports
+        continue-on-error: true

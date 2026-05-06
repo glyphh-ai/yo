@@ -1,0 +1,203 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  # ── Sanity check before publishing anywhere ─────────────────────────────
+  pre-release-checks:
+    name: Pre-release checks (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: true
+      matrix:
+        python-version: ['3.12', '3.13']
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+
+      - name: Set up Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: uv sync --all-extras
+
+      - name: Smoke import
+        run: |
+          uv run python -c "
+          from dotyo.cli import app
+          from dotyo.commands.repl import repl_cmd
+          from dotyo.commands.login import login_cmd
+          from dotyo.commands.doctor import doctor_cmd
+          from dotyo.network import yo_mcp_config
+          assert callable(yo_mcp_config)
+          print('imports ok')
+          "
+
+      - name: CLI surface check
+        run: |
+          uv run yo --help
+          uv run yo version
+
+  # ── Publish wheel + sdist to PyPI via Trusted Publisher (OIDC) ──────────
+  # Pre-configured at https://pypi.org/manage/account/publishing/
+  #   project: dotyo, owner: glyphh-ai, repo: yo, workflow: release.yml, env: pypi
+  publish-pypi:
+    name: Publish to PyPI
+    needs: pre-release-checks
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Build distribution
+        run: uv build
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/
+
+  # ── Build single-file binaries per platform ──────────────────────────────
+  build-binaries:
+    name: Build binary (${{ matrix.os }})
+    needs: pre-release-checks
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            artifact: yo-macos-arm64
+          - os: macos-13
+            artifact: yo-macos-x86_64
+          - os: ubuntu-latest
+            artifact: yo-linux-x86_64
+          - os: windows-latest
+            artifact: yo-windows-x86_64.exe
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --all-extras
+
+      - name: Build binary with PyInstaller
+        shell: bash
+        run: |
+          uv run pyinstaller --onefile --name yo \
+            --collect-all claude_agent_sdk \
+            --hidden-import dotyo.commands.doctor \
+            --hidden-import dotyo.commands.login \
+            --hidden-import dotyo.commands.repl \
+            --hidden-import dotyo.network \
+            src/dotyo/__main__.py
+
+      - name: Rename artifact (mac/linux)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: mv dist/yo dist/${{ matrix.artifact }}
+
+      - name: Rename artifact (windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Move-Item -Force dist/yo.exe dist/${{ matrix.artifact }}
+
+      - name: Sign Windows binary (SSL.com eSigner)
+        if: runner.os == 'Windows'
+        uses: sslcom/esigner-codesign@main
+        with:
+          command: sign
+          username: ${{ secrets.ES_USERNAME }}
+          password: ${{ secrets.ES_PASSWORD }}
+          credential_id: ${{ secrets.ES_CREDENTIAL_ID }}
+          totp_secret: ${{ secrets.ES_TOTP_SECRET }}
+          file_path: ${{ github.workspace }}\dist\${{ matrix.artifact }}
+          output_path: ${{ github.workspace }}\dist\signed
+          malware_block: false
+
+      - name: Replace unsigned with signed (windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Move-Item -Force dist\signed\${{ matrix.artifact }} dist\${{ matrix.artifact }}
+
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist/${{ matrix.artifact }}
+
+  # ── Cut the GitHub release with all binaries attached ──────────────────
+  upload-release:
+    name: Upload to release
+    needs: [publish-pypi, build-binaries]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all binaries
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      - name: Get version from tag
+        id: version
+        run: echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Create release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: "yo ${{ steps.version.outputs.tag }}"
+          body: |
+            ## yo ${{ steps.version.outputs.tag }}
+
+            ### Install via PyPI (recommended for developers)
+            ```bash
+            pipx install dotyo==${{ steps.version.outputs.tag }}
+            # or
+            uv tool install dotyo==${{ steps.version.outputs.tag }}
+            ```
+
+            ### Single-file binary (no Python required)
+            Download the artifact for your platform from the assets below.
+            The Windows binary is code-signed via SSL.com — no SmartScreen
+            warning. macOS and Linux binaries are unsigned for v0.x; on
+            macOS you'll need to right-click → Open the first time.
+
+            ### Quickstart
+            ```bash
+            yo doctor
+            yo login          # opens browser, OAuth device flow
+            yo                # REPL
+            ```
+
+            powered by glyphh ai
+          files: artifacts/**/*
+          draft: ${{ github.event_name == 'workflow_dispatch' }}
+          prerelease: ${{ contains(steps.version.outputs.tag, '-') }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

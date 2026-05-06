@@ -1,0 +1,59 @@
+[project]
+name = "dotyo"
+version = "0.2.0"
+description = "The .Yo cypher engine — terminal-native. Host an orchestrator or earn yos as a worker."
+readme = "README.md"
+license = { text = "Proprietary" }
+authors = [{ name = "glyphh ai", email = "support@glyphh.ai" }]
+requires-python = ">=3.12"
+keywords = ["yo", "cypher", "ai", "agents", "claude", "mcp", "orchestrator", "swarm"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: Other/Proprietary License",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Software Development",
+    "Topic :: Terminals",
+]
+
+dependencies = [
+    "claude-agent-sdk>=0.1.70",
+    "httpx>=0.27.0",
+    "httpx-sse>=0.4.0",
+    "platformdirs>=4.2.0",
+    "pydantic>=2.7.0",
+    "rich>=13.7.0",
+    "typer>=0.12.0",
+]
+
+[project.urls]
+Homepage = "https://yosup.dev"
+Repository = "https://github.com/glyphh-ai/yo"
+Issues = "https://github.com/glyphh-ai/yo/issues"
+
+[project.scripts]
+yo = "dotyo.cli:app"
+dotyo = "dotyo.cli:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/dotyo"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/", "README.md", "LICENSE", "TESTING.md", "THE-PLAN.md"]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.5.0",
+    "mypy>=1.10.0",
+    "pyinstaller>=6.10.0",
+]
