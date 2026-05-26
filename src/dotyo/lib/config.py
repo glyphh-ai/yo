@@ -12,7 +12,7 @@ from pydantic import BaseModel
 
 
 class Config(BaseModel):
-    server_url: str = "https://api.yosup.dev"
+    server_url: str = "https://api.dotyo.dev"
     access_token: str | None = None
     refresh_token: str | None = None
     user_id: str | None = None

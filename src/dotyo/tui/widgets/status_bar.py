@@ -1,6 +1,6 @@
 """Status bar — single dim row docked at the bottom of every screen.
 
-  ● connected · server api.yosup.dev · mcp ✓ · stack code,research · served 3
+  ● connected · server api.dotyo.dev · mcp ✓ · stack code,research · served 3
 
 Watches reactive attrs on the app and re-renders when they change.
 """

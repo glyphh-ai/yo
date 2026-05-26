@@ -325,7 +325,7 @@ didn't open. Run `yo login` again.
 
 **`✗ trial expired — subscribe to continue hosting cyphers`** — the
 14-day free trial ended. Click the subscribe URL or visit
-https://platform.yosup.dev/dashboard/billing.
+https://platform.dotyo.dev/dashboard/billing.
 
 **`Claude Code credentials not found`** — run `claude /login` first,
 then `yo doctor` to verify, then retry.
@@ -335,7 +335,7 @@ then `yo doctor` to verify, then retry.
 - [`glyphh-ai/yo`](https://github.com/glyphh-ai/yo) — the CLI (this skill ships in here)
 - [`glyphh-ai/yo-server`](https://github.com/glyphh-ai/yo-server) — Express broker
 - [`glyphh-ai/yo-platform`](https://github.com/glyphh-ai/yo-platform) — auth + billing
-- [`glyphh-ai/yo-web`](https://github.com/glyphh-ai/yo-web) — marketing site at https://yosup.dev
+- [`glyphh-ai/yo-web`](https://github.com/glyphh-ai/yo-web) — marketing site at https://dotyo.dev
 
 ## Style guidance
 

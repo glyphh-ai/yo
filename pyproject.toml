@@ -34,7 +34,7 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://yosup.dev"
+Homepage = "https://dotyo.dev"
 Repository = "https://github.com/glyphh-ai/yo"
 Issues = "https://github.com/glyphh-ai/yo/issues"
 
